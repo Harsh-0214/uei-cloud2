@@ -98,7 +98,9 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-cyan-400 tracking-tight">UEI Cloud Dashboard</h1>
+          <h1 className="text-2xl font-bold text-cyan-400 tracking-tight">
+          UEI Cloud Dashboard
+        </h1>
           {lastUpdated && (
             <p className="text-slate-500 text-xs mt-1">
               Updated {lastUpdated.toLocaleTimeString()}
@@ -106,6 +108,12 @@ export default function Dashboard() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <a
+            href="/chatbot"
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-cyan-400 transition-colors"
+          >
+            Ask AI
+          </a>
           <span className="text-slate-400 text-sm">Node</span>
           <select
             value={selectedId}

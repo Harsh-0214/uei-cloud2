@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Any
 import os
+import re
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -88,3 +89,63 @@ def latest(node_id: Optional[str] = None) -> Any:
     if node_id and not rows:
         raise HTTPException(status_code=404, detail="unknown node_id")
     return rows[0] if node_id else rows
+
+
+@app.get("/schema")
+def schema() -> Any:
+    """Return the database schema as plain text (for the AI chatbot)."""
+    q = """
+    SELECT t.table_name, c.column_name, c.data_type, c.is_nullable
+    FROM information_schema.tables t
+    JOIN information_schema.columns c
+        ON t.table_name   = c.table_name
+       AND t.table_schema = c.table_schema
+    WHERE t.table_schema = 'public'
+      AND t.table_type   = 'BASE TABLE'
+    ORDER BY t.table_name, c.ordinal_position
+    """
+    with db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(q)
+            rows = cur.fetchall()
+
+    tables: dict[str, list[str]] = {}
+    for table, col, dtype, nullable in rows:
+        note = "  -- nullable" if nullable == "YES" else ""
+        tables.setdefault(table, []).append(f"  {col}  {dtype}{note}")
+
+    lines = ["PostgreSQL database schema (read-only):"]
+    for table, cols in tables.items():
+        lines.append(f"\nTable: {table}")
+        lines.extend(cols)
+    return "\n".join(lines)
+
+
+class QueryRequest(BaseModel):
+    sql: str
+
+
+_BLOCKED = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE|COPY)\b",
+    re.IGNORECASE,
+)
+
+
+@app.post("/query")
+def query(req: QueryRequest) -> Any:
+    """Execute a read-only SELECT query (used by the AI chatbot)."""
+    stripped = req.sql.strip()
+
+    if not re.match(r"^\s*SELECT\b", stripped, re.IGNORECASE):
+        raise HTTPException(status_code=400, detail="Only SELECT queries are permitted.")
+    if _BLOCKED.search(stripped):
+        raise HTTPException(status_code=400, detail="Query contains a forbidden keyword.")
+    if ";" in stripped.rstrip(";"):
+        raise HTTPException(status_code=400, detail="Multi-statement queries are not allowed.")
+
+    with db_conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(stripped)
+            rows = cur.fetchmany(200)
+
+    return [dict(r) for r in rows]
